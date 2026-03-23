@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CodeRun — Execute seu código</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fengari-web/0.1.4/fengari-web.min.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #0d0f14;
+    --panel:     #13161e;
+    --border:    #1e2330;
+    --border2:   #252b3b;
+    --accent:    #00ffa3;
+    --accent2:   #0077ff;
+    --warn:      #ff6b3d;
+    --text:      #c9d1e0;
+    --muted:     #4a5268;
+    --lua:       #6c7aff;
+    --py:        #ffd166;
+    --js:        #f7d87c;
+    --file-hover:#1a1f2e;
+    --selected:  #0e2a1e;
+    --radius:    8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── TOPBAR ─────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+    height: 52px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo span { color: var(--accent); }
+  .logo-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .upload-btn {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: #000;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+    padding: 8px 18px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all .2s;
+    letter-spacing: 0.3px;
+  }
+  .upload-btn:hover { background: #00ffc8; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,255,163,.25); }
+  .upload-btn svg { width: 16px; height: 16px; }
+  #folderInput { display: none; }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .badge-green { background: rgba(0,255,163,.12); color: var(--accent); border: 1px solid rgba(0,255,163,.25); }
+
+  /* ── LAYOUT ─────────────────────────────── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ─────────────────────────────── */
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 12px 16px;
+    font-size: 10px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .file-count {
+    background: var(--border2);
+    color: var(--muted);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 20px;
+  }
+
+  .file-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .file-tree::-webkit-scrollbar { width: 4px; }
+  .file-tree::-webkit-scrollbar-track { background: transparent; }
+  .file-tree::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 12px;
+    color: var(--muted);
+    padding: 24px;
+    text-align: center;
+  }
+  .empty-state svg { opacity: .3; }
+  .empty-state p { font-size: 11px; line-height: 1.6; }
+
+  .folder-group { margin-bottom: 2px; }
+  .folder-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 16px;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    user-select: none;
+    transition: color .15s;
+  }
+  .folder-label:hover { color: var(--text); }
+  .folder-label svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder-arrow { transition: transform .2s; color: var(--muted); font-size: 9px; }
+  .folder-group.collapsed .folder-arrow { transform: rotate(-90deg); }
+  .folder-group.collapsed .folder-children { display: none; }
+
+  .folder-children { margin-left: 16px; border-left: 1px solid var(--border); }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 16px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 1px 4px 1px 0;
+    transition: background .15s;
+    border-left: 2px solid transparent;
+  }
+  .file-item:hover { background: var(--file-hover); }
+  .file-item.selected {
+    background: var(--selected);
+    border-left-color: var(--accent);
+    color: #fff;
+  }
+  .file-icon { font-size: 13px; flex-shrink: 0; }
+  .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .lang-tag {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 600;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+  }
+  .lang-py  { background: rgba(255,209,102,.15); color: var(--py); }
+  .lang-lua { background: rgba(108,122,255,.15); color: var(--lua); }
+  .lang-js  { background: rgba(247,216,124,.15); color: var(--js); }
+  .lang-txt { background: rgba(74,82,104,.2); color: var(--muted); }
+  .lang-other { background: rgba(74,82,104,.2); color: var(--muted); }
+
+  /* ── MAIN AREA ─────────────────────────────── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* tabs */
+  .tabs {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    padding: 0 8px;
+    height: 40px;
+    gap: 2px;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    height: 100%;
+    font-size: 12px;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: #fff; border-bottom-color: var(--accent); }
+
+  /* code viewer */
+  .code-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .code-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  .code-header .file-path {
+    flex: 1;
+    color: var(--muted);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .code-header .file-path strong { color: var(--text); }
+
+  .run-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--accent);
+    color: #000;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    border: none;
+    padding: 7px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .2s;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+  }
+  .run-btn:hover:not(:disabled) { background: #00ffc8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,255,163,.3); }
+  .run-btn:disabled { background: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
+  .run-btn svg { width: 14px; height: 14px; }
+  .spinner { animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  pre.code-view {
+    flex: 1;
+    overflow: auto;
+    padding: 20px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    background: var(--bg);
+    counter-reset: line;
+  }
+  pre.code-view::-webkit-scrollbar { width: 6px; height: 6px; }
+  pre.code-view::-webkit-scrollbar-track { background: transparent; }
+  pre.code-view::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  pre.code-view .line { display: flex; }
+  pre.code-view .ln {
+    counter-increment: line;
+    min-width: 36px;
+    color: var(--muted);
+    user-select: none;
+    text-align: right;
+    padding-right: 20px;
+    font-size: 11px;
+  }
+
+  /* welcome screen */
+  .welcome {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--muted);
+    text-align: center;
+    padding: 40px;
+  }
+  .welcome h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .welcome p { font-size: 12px; line-height: 1.8; max-width: 360px; }
+  .welcome .steps {
+    display: flex;
+    gap: 24px;
+    margin-top: 12px;
+  }
+  .step {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    text-align: left;
+    min-width: 140px;
+  }
+  .step-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--accent);
+    opacity: .5;
+    margin-bottom: 8px;
+  }
+  .step p { font-size: 11px; line-height: 1.6; color: var(--text); }
+
+  /* ── TERMINAL ─────────────────────────────── */
+  .terminal {
+    border-top: 1px solid var(--border);
+    background: #090b10;
+    display: flex;
+    flex-direction: column;
+    min-height: 180px;
+    max-height: 320px;
+    flex-shrink: 0;
+  }
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 10px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .terminal-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-r { background: #ff5f57; }
+  .dot-y { background: #febc2e; }
+  .dot-g { background: #28c840; }
+  .terminal-title { flex: 1; }
+  .clear-btn {
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .clear-btn:hover { color: var(--text); border-color: var(--text); }
+
+  .terminal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .terminal-body::-webkit-scrollbar { width: 4px; }
+  .terminal-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .t-info  { color: var(--muted); }
+  .t-ok    { color: var(--accent); }
+  .t-err   { color: var(--warn); }
+  .t-out   { color: var(--text); white-space: pre-wrap; }
+  .t-cmd   { color: var(--accent2); }
+  .t-time  { color: var(--muted); font-size: 10px; }
+
+  .no-support {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,107,61,.08);
+    border: 1px solid rgba(255,107,61,.2);
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: var(--warn);
+    font-size: 12px;
+    margin: 10px 0;
+  }
+
+  /* resize handle */
+  .resize-handle {
+    height: 4px;
+    background: var(--border);
+    cursor: ns-resize;
+    transition: background .15s;
+    flex-shrink: 0;
+  }
+  .resize-handle:hover { background: var(--accent2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    Code<span>Run</span>
+  </div>
+  <span class="badge badge-green">100% No Browser</span>
+  <label class="upload-btn" for="folderInput">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    </svg>
+    Importar Pasta
+  </label>
+  <input type="file" id="folderInput" webkitdirectory multiple/>
+</header>
+
+<div class="workspace">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      Arquivos
+      <span class="file-count" id="fileCount">0</span>
+    </div>
+    <div class="file-tree" id="fileTree">
+      <div class="empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        </svg>
+        <p>Nenhuma pasta importada.<br/>Clique em "Importar Pasta" para começar.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="tabs" id="tabs"></div>
+
+    <div class="code-area" id="codeArea">
+      <div class="welcome">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="color:var(--accent);opacity:.6">
+          <polyline points="16 18 22 12 16 6"/>
+          <polyline points="8 6 2 12 8 18"/>
+        </svg>
+        <h2>Bem-vindo ao CodeRun</h2>
+        <p>Importe uma pasta e selecione um arquivo para visualizar e executar seu código.</p>
+        <div class="steps">
+          <div class="step"><div class="step-num">01</div><p>Clique em<br/><strong>Importar Pasta</strong></p></div>
+          <div class="step"><div class="step-num">02</div><p>Escolha um arquivo<br/>na barra lateral</p></div>
+          <div class="step"><div class="step-num">03</div><p>Clique em<br/><strong>▶ Executar</strong></p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="resize-handle" id="resizeHandle"></div>
+
+    <div class="terminal">
+      <div class="terminal-header">
+        <span class="terminal-dot dot-r"></span>
+        <span class="terminal-dot dot-y"></span>
+        <span class="terminal-dot dot-g"></span>
+        <span class="terminal-title">Terminal</span>
+        <button class="clear-btn" onclick="clearTerminal()">limpar</button>
+      </div>
+      <div class="terminal-body" id="terminalBody">
+        <div class="t-info">▸ CodeRun pronto. Aguardando execução...</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // ─── STATE ───────────────────────────────────
+  const SUPPORTED = { py: 'python', lua: 'lua', js: 'javascript', java: 'java' };
+  const ICON = { py: '🐍', lua: '🌙', js: '⚡', java: '☕', txt: '📄', html: '🌐', json: '📋', md: '📝' };
+
+  let allFiles = {};       // path → File
+  let selectedPath = null;
+  let openTabs = [];       // paths
+  let isRunning = false;
+
+  // ─── FOLDER INPUT ────────────────────────────
+  document.getElementById('folderInput').addEventListener('change', function(e) {
+    allFiles = {};
+    const files = [...e.target.files];
+    files.forEach(f => { allFiles[f.webkitRelativePath || f.name] = f; });
+    buildFileTree();
+    this.value = '';
+  });
+
+  // ─── BUILD FILE TREE ─────────────────────────
+  function buildFileTree() {
+    const tree = document.getElementById('fileTree');
+    const count = Object.keys(allFiles).length;
+    document.getElementById('fileCount').textContent = count;
+
+    if (count === 0) {
+      tree.innerHTML = '<div class="empty-state"><p>Pasta vazia.</p></div>';
+      return;
+    }
+
+    // Group by folder
+    const groups = {};
+    Object.keys(allFiles).sort().forEach(path => {
+      const parts = path.split('/');
+      const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : '(raiz)';
+      if (!groups[folder]) groups[folder] = [];
+      groups[folder].push(path);
+    });
+
+    tree.innerHTML = '';
+    Object.entries(groups).forEach(([folder, paths]) => {
+      const div = document.createElement('div');
+      div.className = 'folder-group';
+
+      const label = document.createElement('div');
+      label.className = 'folder-label';
+      label.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        </svg>
+        <span class="folder-name">${folder}</span>
+        <span class="folder-arrow">▾</span>
+      `;
+      label.addEventListener('click', () => div.classList.toggle('collapsed'));
+
+      const children = document.createElement('div');
+      children.className = 'folder-children';
+
+      paths.forEach(path => {
+        const name = path.split('/').pop();
+        const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+        const icon = ICON[ext] || '📄';
+        const langClass = ext in SUPPORTED ? `lang-${ext}` : (ext === 'txt' ? 'lang-txt' : 'lang-other');
+        const langLabel = ext in SUPPORTED ? ext : (ext || '?');
+
+        const item = document.createElement('div');
+        item.className = 'file-item' + (path === selectedPath ? ' selected' : '');
+        item.dataset.path = path;
+        item.innerHTML = `
+          <span class="file-icon">${icon}</span>
+          <span class="file-name">${name}</span>
+          <span class="lang-tag ${langClass}">${langLabel}</span>
+        `;
+        item.addEventListener('click', () => openFile(path));
+        children.appendChild(item);
+      });
+
+      div.appendChild(label);
+      div.appendChild(children);
+      tree.appendChild(div);
+    });
+  }
+
+  // ─── OPEN FILE ────────────────────────────────
+  async function openFile(path) {
+    selectedPath = path;
+    document.querySelectorAll('.file-item').forEach(el => {
+      el.classList.toggle('selected', el.dataset.path === path);
+    });
+    if (!openTabs.includes(path)) openTabs.push(path);
+    renderTabs();
+
+    const file = allFiles[path];
+    const text = await file.text();
+    renderCode(path, text);
+  }
+
+  // ─── TABS ─────────────────────────────────────
+  function renderTabs() {
+    const tabsEl = document.getElementById('tabs');
+    tabsEl.innerHTML = '';
+    openTabs.forEach(path => {
+      const name = path.split('/').pop();
+      const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+      const icon = ICON[ext] || '📄';
+      const tab = document.createElement('div');
+      tab.className = 'tab' + (path === selectedPath ? ' active' : '');
+      tab.innerHTML = `${icon} ${name}`;
+      tab.addEventListener('click', () => openFile(path));
+      tabsEl.appendChild(tab);
+    });
+  }
+
+  // ─── RENDER CODE ─────────────────────────────
+  function renderCode(path, text) {
+    const name = path.split('/').pop();
+    const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+    const canRun = ext in SUPPORTED;
+    const isJava = ext === 'java';
+
+    const area = document.getElementById('codeArea');
+    area.innerHTML = `
+      <div class="code-header">
+        <span class="file-path">📁 <strong>${escapeHtml(path)}</strong></span>
+        ${canRun ? `
+        <button class="run-btn" id="runBtn" onclick="runFile()">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          ${isJava ? 'Ver Comando' : 'Executar'}
+        </button>` : ''}
+      </div>
+      <pre class="code-view" id="codeView">${escapeHtml(text).split('\n').map(l =>
+        `<div class="line"><span class="ln"></span><span>${l || ' '}</span></div>`
+      ).join('')}</pre>
+    `;
+  }
+
+  function escapeHtml(t) {
+    if (t == null) return '';
+    return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ─── SKULPT LOADER (Python puro JS, sem WASM) ─
+  let skulptReady = false;
+
+  async function loadSkulptIfNeeded() {
+    if (skulptReady) return true;
+    termLog(`<span class="t-info">⟳ Carregando Python (Skulpt)...</span>`);
+    try {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt.min.js');
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt-stdlib.js');
+      skulptReady = true;
+      termLog(`<span class="t-ok">✓ Python pronto!</span>`);
+      return true;
+    } catch(e) {
+      termLog(`<span class="t-err">✗ Falha ao carregar Skulpt: ${escapeHtml(e.message)}</span>`);
+      return false;
+    }
+  }
+
+  function loadScript(src) {
+    return new Promise((res, rej) => {
+      if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+      const s = document.createElement('script');
+      s.src = src; s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  // ─── RUN FILE ────────────────────────────────
+  async function runFile() {
+    if (!selectedPath || isRunning) return;
+    const name = selectedPath.split('/').pop();
+    const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+
+    // Java: só mostra instruções
+    if (ext === 'java') { showJavaInstructions(selectedPath, name); return; }
+
+    if (!(ext in SUPPORTED)) {
+      termLog(`<span class="t-err">✗ Linguagem .${ext} não suportada para execução.</span>`);
+      return;
+    }
+
+    isRunning = true;
+    const btn = document.getElementById('runBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Executando...`;
+    }
+
+    const file = allFiles[selectedPath];
+    const code = await file.text();
+    const t0 = Date.now();
+    termLog(`<span class="t-cmd">$ coderun ${escapeHtml(name)}</span>`);
+
+    try {
+      if (ext === 'py')  await runPython(code, t0);
+      else if (ext === 'lua') await runLua(code, t0);
+      else if (ext === 'js')  await runJavaScript(code, t0);
+    } catch(e) {
+      termLog(`<span class="t-err">✗ Erro inesperado: ${escapeHtml(e.message)}</span>`);
+    }
+
+    isRunning = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Executar`;
+    }
+    scrollTerminal();
+  }
+
+  // ── JAVA: mostra instruções com caminho ───────
+  function showJavaInstructions(path, name) {
+    const className = name.replace('.java', '');
+    const folder = path.includes('/') ? path.split('/').slice(0,-1).join('/') : '.';
+    termLog(`<span class="t-cmd">☕ Java detectado: ${escapeHtml(name)}</span>`);
+    termLog(`<span class="t-info">▸ Java não pode rodar direto no browser.</span>`);
+    termLog(`<span class="t-info">▸ Para executar no seu computador, abra o terminal na pasta do projeto:</span>`);
+    termLog(`<span style="color:#6c7aff">  cd "${escapeHtml(folder)}"</span>`);
+    termLog(`<span class="t-info">▸ Compile o arquivo:</span>`);
+    termLog(`<span style="color:#6c7aff">  javac ${escapeHtml(name)}</span>`);
+    termLog(`<span class="t-info">▸ Execute:</span>`);
+    termLog(`<span style="color:#6c7aff">  java ${escapeHtml(className)}</span>`);
+    termLog(`<span class="t-info">▸ Ou com um clique, usando VS Code com a extensão "Extension Pack for Java".</span>`);
+    scrollTerminal();
+  }
+
+  // ── PYTHON via Skulpt ─────────────────────────
+  async function runPython(code, t0) {
+    const ok = await loadSkulptIfNeeded();
+    if (!ok) return;
+    termLog(`<span class="t-info">▸ Executando Python no browser...</span>`);
+
+    return new Promise((resolve) => {
+      let outputBuf = '';
+
+      Sk.configure({
+        output(text) {
+          outputBuf += text;
+        },
+        read(x) {
+          if (Sk.builtinFiles?.files[x] === undefined)
+            throw `Arquivo não encontrado: '${x}'`;
+          return Sk.builtinFiles.files[x];
+        },
+        __future__: Sk.python3,
+      });
+
+      Sk.misceval.asyncToPromise(() =>
+        Sk.importMainWithBody('<stdin>', false, code, true)
+      ).then(() => {
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+        outputBuf.split('\n').filter(Boolean).forEach(l =>
+          termLog(`<span class="t-out">${escapeHtml(l)}</span>`)
+        );
+        if (!outputBuf.trim()) termLog(`<span class="t-info">(sem saída)</span>`);
+        termLog(`<span class="t-ok">▸ Concluído · ${elapsed}s</span>`);
+        resolve();
+      }).catch(e => {
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+        if (outputBuf.trim()) {
+          outputBuf.split('\n').filter(Boolean).forEach(l =>
+            termLog(`<span class="t-out">${escapeHtml(l)}</span>`)
+          );
+        }
+        const msg = e?.toString() || e?.message || 'Erro desconhecido';
+        termLog(`<span class="t-err">✗ ${escapeHtml(msg)}</span>`);
+        termLog(`<span class="t-err">▸ Processo encerrado com erro · ${elapsed}s</span>`);
+        resolve();
+      });
+    });
+  }
+
+  // ── LUA via Fengari ──────────────────────────
+  async function runLua(code, t0) {
+    termLog(`<span class="t-info">▸ Executando Lua no browser...</span>`);
+    if (!window.fengari) {
+      termLog(`<span class="t-err">✗ Fengari não carregou. Verifique sua conexão.</span>`);
+      return;
+    }
+    try {
+      const { lua, lauxlib, lualib } = fengari;
+      const L = lauxlib.luaL_newstate();
+      lualib.luaL_openlibs(L);
+
+      let captured = '';
+      lua.lua_pushcfunction(L, (L) => {
+        const n = lua.lua_gettop(L);
+        const parts = [];
+        for (let i = 1; i <= n; i++) {
+          const v = lua.lua_tojsstring(L, i);
+          parts.push(v !== null ? v : String(lua.lua_tonumber(L, i)));
+        }
+        captured += parts.join('\t') + '\n';
+        return 0;
+      });
+      lua.lua_setglobal(L, 'print');
+
+      const bytes = new TextEncoder().encode(code);
+      const status = lauxlib.luaL_loadbuffer(L, bytes, bytes.length, 'script');
+      const luaErr1 = lua.lua_tojsstring(L, -1) ?? 'Erro de sintaxe desconhecido';
+        termLog(`<span class="t-err">✗ Erro de sintaxe: ${escapeHtml(luaErr1)}</span>`);
+      } else {
+        const call = lua.lua_pcall(L, 0, lua.LUA_MULTRET, 0);
+        if (call !== lua.LUA_OK) {
+          const luaErr2 = lua.lua_tojsstring(L, -1) ?? 'Erro de execução desconhecido';
+          termLog(`<span class="t-err">✗ ${escapeHtml(luaErr2)}</span>`);
+        }
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+      captured.split('\n').filter(Boolean).forEach(l =>
+        termLog(`<span class="t-out">${escapeHtml(l)}</span>`)
+      );
+      if (!captured.trim()) termLog(`<span class="t-info">(sem saída)</span>`);
+      termLog(`<span class="t-ok">▸ Concluído · ${elapsed}s</span>`);
+    } catch(e) {
+      termLog(`<span class="t-err">✗ Erro Lua: ${escapeHtml(e.message)}</span>`);
+    }
+  }
+
+  // ── JAVASCRIPT via Worker externo (runner.js) ─
+  function runJavaScript(code, t0) {
+    return new Promise(function(resolve) {
+      termLog('<span class="t-info">▸ Executando JavaScript...</span>');
+      var hasOutput = false;
+      var done = false;
+
+      var worker;
+      try {
+        worker = new Worker('runner.js');
+      } catch(e) {
+        termLog('<span class="t-err">✗ Erro ao criar Worker: ' + escapeHtml(e.message) + '</span>');
+        resolve(); return;
+      }
+
+      var timeout = setTimeout(function() {
+        if (!done) {
+          termLog('<span class="t-err">✗ Timeout: execução excedeu 5s.</span>');
+          cleanup();
+        }
+      }, 5000);
+
+      function cleanup() {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        try { worker.terminate(); } catch(e) {}
+        var elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+        if (!hasOutput) termLog('<span class="t-info">(sem saída)</span>');
+        termLog('<span class="t-ok">▸ Concluído · ' + elapsed + 's</span>');
+        resolve();
+      }
+
+      worker.onmessage = function(e) {
+        var type = e.data.type, data = e.data.data;
+        if (type === 'log')   { termLog('<span class="t-out">'          + escapeHtml(data) + '</span>'); hasOutput = true; }
+        if (type === 'warn')  { termLog('<span style="color:#ffd166">'  + escapeHtml(data) + '</span>'); hasOutput = true; }
+        if (type === 'error') { termLog('<span class="t-err">'          + escapeHtml(data) + '</span>'); hasOutput = true; }
+        if (type === 'done')  cleanup();
+      };
+
+      worker.onerror = function(e) {
+        e.preventDefault();
+        termLog('<span class="t-err">✗ ' + escapeHtml(e.message || String(e)) + '</span>');
+        hasOutput = true;
+        cleanup();
+      };
+
+      worker.postMessage({ type: 'run', code: code });
+    });
+  }
+
+  // ─── TERMINAL HELPERS ─────────────────────────
+  function termLog(html) {
+    const body = document.getElementById('terminalBody');
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    body.appendChild(div);
+    scrollTerminal();
+  }
+
+  function scrollTerminal() {
+    const body = document.getElementById('terminalBody');
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function clearTerminal() {
+    document.getElementById('terminalBody').innerHTML =
+      '<div class="t-info">▸ Terminal limpo.</div>';
+  }
+
+  // ─── RESIZE HANDLE ────────────────────────────
+  const handle = document.getElementById('resizeHandle');
+  const terminal = handle.nextElementSibling;
+  let dragging = false, startY = 0, startH = 0;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startY = e.clientY;
+    startH = terminal.offsetHeight;
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const delta = startY - e.clientY;
+    const newH = Math.min(500, Math.max(80, startH + delta));
+    terminal.style.maxHeight = newH + 'px';
+    terminal.style.minHeight = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+</script>
+</body>
+</html>
